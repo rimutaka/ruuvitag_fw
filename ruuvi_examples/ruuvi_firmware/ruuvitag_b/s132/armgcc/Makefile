@@ -218,6 +218,7 @@ INC_FOLDERS += \
   $(SDK_ROOT)/components/nfc/t2t_lib/hal_t2t \
   $(SDK_ROOT)/components/nfc/ndef/text \
   $(SDK_ROOT)/components/nfc/ndef/generic/message \
+  $(SDK_ROOT)\components\nfc\ndef\generic\message \
   $(SDK_ROOT)/components/nfc/ndef/generic/record \
   $(SDK_ROOT)/components/nfc/t2t_lib \
   $(SDK_ROOT)/components/nfc/ndef/text \

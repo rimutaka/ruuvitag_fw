@@ -135,6 +135,7 @@ INC_FOLDERS += \
   $(SDK_ROOT)/components/ble/ble_services/ble_rscs_c \
   $(SDK_ROOT)/components/ble/ble_services/ble_tps \
   $(SDK_ROOT)/components/ble/common \
+  $(SDK_ROOT)\components\ble\common \
   $(SDK_ROOT)/components/ble/nrf_ble_qwr \
   $(SDK_ROOT)/components/ble/peer_manager \
   $(SDK_ROOT)/components/device \
@@ -209,6 +210,7 @@ INC_FOLDERS += \
   $(IOTA_ROOT)/lib/utils \
   $(PROJ_DIR)/ble_services/ \
   $(PROJ_DIR)/tests/ \
+  $(PROJ_DIR)\tests\ \
   $(PROJ_DIR)/ \
   $(PROJ_DIR)/../../bsp \
   $(PROJ_DIR)/../../drivers/bluetooth \
