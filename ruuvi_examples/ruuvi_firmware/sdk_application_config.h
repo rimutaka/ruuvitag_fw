@@ -15,7 +15,7 @@
 #define NFC_HAL_ENABLED 1
 #define CRC16_ENABLED   1  //CRC required by DFU
 #define CRC32_ENABLED   1
-#define NRF_LOG_ENABLED 0
+#define NRF_LOG_ENABLED 1
 #define BLE_DIS_ENABLED 1  //Device information service
 
 // WDT_CONFIG_RELOAD_VALUE - Reload value  <15-4294967295> (ms)
