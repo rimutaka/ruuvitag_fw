@@ -58,6 +58,7 @@
 #define SPIM0_SS_HUMI_PIN  3  // SPI Slave Select (BME280)
 #define INT_ACC1_PIN       2  // Accelerometer interrupt 1
 #define INT_ACC2_PIN       6  // Accelerometer interrupt 2
+#define INT_EXT4_PIN       4  // External interrupt on pin P0.04
 
 #define REVERSE_PROT_VOLT_DROP_MILLIVOLTS 1    //!< Typical forward voltage drop of the mosfet
 

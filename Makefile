@@ -47,10 +47,10 @@ fw:
 	@echo build FW
 	git submodule sync
 	git submodule update --init --recursive
-	$(MAKE) -C ruuvi_examples/ble_app_beacon/ruuvitag_b/s132/armgcc
-	$(MAKE) -C ruuvi_examples/eddystone/ruuvitag_b/s132/armgcc
+#	$(MAKE) -C ruuvi_examples/ble_app_beacon/ruuvitag_b/s132/armgcc
+#	$(MAKE) -C ruuvi_examples/eddystone/ruuvitag_b/s132/armgcc
 	$(MAKE) -C ruuvi_examples/ruuvi_firmware/ruuvitag_b/s132/armgcc
-	$(MAKE) -C ruuvi_examples/test_drivers/ruuvitag_b/s132/armgcc
+#	$(MAKE) -C ruuvi_examples/test_drivers/ruuvitag_b/s132/armgcc
 
 bootloader:
 	@echo build bootloader
