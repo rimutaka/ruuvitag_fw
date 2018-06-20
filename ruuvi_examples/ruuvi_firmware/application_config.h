@@ -24,6 +24,4 @@
 // 64 mg on 2G/10bit
 #define LIS2DH12_ACTIVITY_THRESHOLD 0x04
 
-#define LED_INDICATE_BROADCAST 1 // 0 - Always off, 1 - On while broadcasting.
-
 #endif
