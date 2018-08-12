@@ -14,7 +14,7 @@
 // application out of sleep at higher (or lower) interval.
 #define MAIN_LOOP_INTERVAL_RAW   1000u  //How often main_timer_handler routine fires 
 #define ADVERTISING_INTERVAL_RAW 200u   //How often BLE packets go out when advertising starts
-#define AD_MAIN_LOOP_CYCLES 5           //Number of main_timer_handler cycles to advertise after a single activation  
+#define AD_MAIN_LOOP_CYCLES 2           //Number of main_timer_handler cycles to advertise after a single activation  
 
 //Raw v2
 #define RAW_DATA_LENGTH 24
