@@ -24,4 +24,10 @@
 // 64 mg on 2G/10bit
 #define LIS2DH12_ACTIVITY_THRESHOLD 0x04
 
+// SAADC can be used to sample the state of some other sensor
+#define SAADC_PIN30_ENABLED 1 // Compile voltage checks on pin 30 during every interval
+#define SAADC_PIN30_CHANNEL 1 // Set the channel here to avoid conflicts with other parts of the code, e.g. battery
+#define SAADC_PIN30_ON_MIN 200 // A min value range for an ON event
+#define SAADC_PIN30_ON_MAX 1000 // A max value range for an ON event
+
 #endif

@@ -27,6 +27,7 @@
 #include "app_scheduler.h"
 #include "app_timer_appsh.h"
 #include "nrf_drv_clock.h"
+#include "nrf_drv_saadc.h"
 #include "nrf_gpio.h"
 #include "nrf_delay.h"
 
@@ -81,6 +82,7 @@ static uint32_t ext_pin4_events_b4 = 0;     //counter from the previous cycle
 static ruuvi_sensor_t data;
 
 static void main_timer_handler(void *p_context);
+uint16_t getP30Voltage(void);
 
 /**@brief Function for doing power management.
  */
@@ -101,6 +103,15 @@ static void updateAdvertisement(void)
 void main_timer_handler(void *p_context)
 {
 
+#if SAADC_PIN30_ENABLED
+
+  // get AIN6/P030 voltage and treat it as a pin4 event if the values are within ON range
+  uint16_t p30voltage = getP30Voltage();
+  if ((p30voltage > SAADC_PIN30_ON_MIN) && (p30voltage < SAADC_PIN30_ON_MAX))
+    ext_pin4_events++;
+
+#endif
+
 #if NRF_LOG_LEVEL > 3
 
   // Turn green LED on from acceleration
@@ -116,9 +127,8 @@ void main_timer_handler(void *p_context)
   // Toggle red led for ext pin
   if (ext_pin4_events > 0)
   {
-    NRF_LOG_INFO("Pin4: %d\r\n", ext_pin4_events);
+    NRF_LOG_DEBUG("Pin4: %d\r\n", ext_pin4_events);
     nrf_gpio_pin_clear(LED_RED);
-    //ext_pin4_events = 0;
   }
   else
   {
@@ -166,20 +176,16 @@ void main_timer_handler(void *p_context)
     encodeToRawFormat5(data_buffer, &environmental, &buffer.sensor, acceleration_events, vbat, BLE_TX_POWER);
   }
 
-  NRF_LOG_DEBUG("Ad c: %d, ace: %d, aceb4: %d\r\n", ad_cycles, acceleration_events, acceleration_events_b4);
-
   //Advertise only if there was a new acceleration event
   if (acceleration_events > acceleration_events_b4 || ext_pin4_events > ext_pin4_events_b4)
   {
     //Advertise for N cycles from now
     ad_cycles = AD_MAIN_LOOP_CYCLES;
-    NRF_LOG_DEBUG("Start ads: %d\r\n", ad_cycles);
     bluetooth_advertising_start();
   }
   else if (ad_cycles == 0 && active)
   {
     // Stop advertising
-    NRF_LOG_DEBUG("Stop ads: %d\r\n", ad_cycles);
     bluetooth_advertising_stop();
     acceleration_events = 0; //Reset acceleration counter for the next cycle
     ext_pin4_events = 0;
@@ -224,6 +230,43 @@ ret_code_t ext_int4_handler(const ruuvi_standard_message_t message)
   return NRF_SUCCESS;
 }
 
+// =============================== SAADC PIN30 =========================================== //
+
+#if SAADC_PIN30_ENABLED
+
+// Try to get sensor voltage in a safe manner
+uint16_t getP30Voltage(void)
+{
+  // Can SAADC be used?
+  if (nrf_drv_saadc_is_busy()) return 0;
+
+  // Take a blocking sample
+  nrf_saadc_value_t voltage_level;
+  ret_code_t err_code = nrf_drv_saadc_sample_convert(SAADC_PIN30_CHANNEL, &voltage_level);
+  if (err_code != NRF_SUCCESS) return 0;
+
+  // see drivers/battery.c for explanation of the values
+  uint16_t voltage = voltage_level * 3.515625 + REVERSE_PROT_VOLT_DROP_MILLIVOLTS;
+
+  //Return as voltage
+  return voltage;
+}
+
+ret_code_t saadc_init(void)
+{
+  // enable it on pin 30
+  nrf_saadc_channel_config_t channel_config = NRF_DRV_SAADC_DEFAULT_CHANNEL_CONFIG_SE(NRF_SAADC_INPUT_AIN6);
+
+  // Call that init routine to avoid clashing with their initialisation
+  battery_voltage_init();
+
+  ret_code_t err_code = nrf_drv_saadc_channel_init(SAADC_PIN30_CHANNEL, &channel_config);
+
+  return err_code;
+}
+
+#endif // End of SAADC PIN30
+
 /**
  * @brief Function for application main entry.
  */
@@ -239,7 +282,7 @@ int main(void)
   err_code |= init_leds();     // INIT leds first and turn RED on.
   nrf_gpio_pin_clear(LED_RED); // If INIT fails at later stage, RED will stay lit.
 
-  NRF_LOG_INFO("Inside main.\r\n");
+  NRF_LOG_DEBUG("Inside main.\r\n");
 
   //Init NFC ASAP in case we're waking from deep sleep via NFC (todo)
   //err_code |= init_nfc();
@@ -258,6 +301,11 @@ int main(void)
 
   // Start interrupts.
   err_code |= pin_interrupt_init();
+
+// SAADC is optional
+#if SAADC_PIN30_ENABLED
+  err_code |= saadc_init();
+#endif
 
   // Interrupt handler is defined in lis2dh12_acceleration_handler.c, reads the buffer and passes the data onwards to application as configured.
   // Try using PROPRIETARY as a target of accelerometer to implement your own logic.
