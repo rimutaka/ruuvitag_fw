@@ -69,6 +69,13 @@ void encodeToSensorDataFormat(uint8_t* data_buffer, ruuvi_sensor_t* data);
  */
 void encodeToRawFormat5(uint8_t* data_buffer, bme280_data_t* environmental, acceleration_t* acceleration, uint16_t acceleration_events, uint16_t vbatt, int8_t tx_pwr);
 
+/**
+ *  Encode initial ad with zero values so that the recipient knows there was a restart
+ *  @param data_buffer uint8_t array with length of 24 bytes
+ *  @param vbatt Voltage of battery in millivolts
+ */
+void encodeToRawFormat5OnStartup(uint8_t* data_buffer, uint16_t vbatt, int8_t tx_pwr);
+
 
 /**
  *  Encodes sensor data into given char* url. The base url must have the base of url written by caller.

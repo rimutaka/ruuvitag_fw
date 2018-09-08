@@ -107,6 +107,34 @@ void encodeToRawFormat5(uint8_t* data_buffer, bme280_data_t* environmental, acce
 }
 
 /**
+ * @brief Encode initial ad with zero values so that the recipient knows there was a restart
+ */
+void encodeToRawFormat5OnStartup(uint8_t* data_buffer, uint16_t vbatt, int8_t tx_pwr)
+{
+    data_buffer[0] = RAW_FORMAT_2;
+    // data_buffer[1 ... 12] range should contain zeros from the variable initialisation as it's called only once
+
+    //Bit-shift vbatt by 4 to fit TX PWR in
+    vbatt -= 1600; //Bias by 1600 mV
+    vbatt <<= 5;   //Shift by 5 to fit TX PWR in
+    data_buffer[13] = (vbatt)>>8;
+    data_buffer[14] = (vbatt)&0xFF; //Zeroes tx-pwr bits
+    tx_pwr += 40;
+    tx_pwr /= 2;
+    data_buffer[14] |= (tx_pwr)&0x1F; //5 lowest bits for TX pwr
+    data_buffer[15] = 0;
+    data_buffer[16] = 0;
+    data_buffer[17] = 0;
+    data_buffer[18] = ((NRF_FICR->DEVICEADDR[1]>>8)&0xFF) | 0xC0; //2 MSB must be 11;
+    data_buffer[19] = ((NRF_FICR->DEVICEADDR[1]>>0)&0xFF);
+    data_buffer[20] = ((NRF_FICR->DEVICEADDR[0]>>24)&0xFF);
+    data_buffer[21] = ((NRF_FICR->DEVICEADDR[0]>>16)&0xFF);
+    data_buffer[22] = ((NRF_FICR->DEVICEADDR[0]>>8)&0xFF);
+    data_buffer[23] = ((NRF_FICR->DEVICEADDR[0]>>0)&0xFF);
+
+}
+
+/**
  *  Encodes sensor data into given char* url. The base url must have the base of url written by caller.
  *  For example, url = { 0x03, 'r' 'u' 'u' '.' 'v' 'i' '/' '#' '0' '0' '0' '0' '0' '0' '0' '0'}
  *  The URL may have a length of 18 bytes, 8 of which is consumed by payload. 

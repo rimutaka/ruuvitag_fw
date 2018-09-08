@@ -33,7 +33,7 @@
 
 //Logging
 #define NRF_LOG_MODULE_NAME "App"
-#define NRF_LOG_LEVEL 0
+#define NRF_LOG_LEVEL 3 // Using INFO level for debugging. I couldn't get DEBUG level to work.
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
 
@@ -75,11 +75,14 @@ static uint8_t data_buffer[RAW_DATA_LENGTH] = {0};
 //static bool highres = true;        // Flag for used mode
 static uint16_t acceleration_events = 0;    // Acceleration interrupts counter
 static uint32_t ext_pin4_events = 0;        // Pin 4 interrupts counter
-static uint16_t ad_cycles = 0;              //a counter for ad cycles
-static uint16_t acceleration_events_b4 = 0; //counter from the previous cycle
-static uint32_t ext_pin4_events_b4 = 0;     //counter from the previous cycle
+static uint16_t ad_cycles = 0;              // a counter for ad cycles
+static uint16_t acceleration_events_b4 = 0; // counter from the previous cycle
+static uint32_t ext_pin4_events_b4 = 0;     // counter from the previous cycle
+static bool initAdSent = false;             // set to true once on start after sending an empty ad
+//static uint32_t counter_cycles_since_on = 60; // decremented for a soft start
+//static uint32_t counter_heartbeat_cycles = 0; // incremented with every main loop
 
-static ruuvi_sensor_t data;
+//static ruuvi_sensor_t data;
 
 static void main_timer_handler(void *p_context);
 uint16_t getP30Voltage(void);
@@ -98,25 +101,59 @@ static void updateAdvertisement(void)
   err_code |= bluetooth_set_manufacturer_data(data_buffer, sizeof(data_buffer));
 }
 
-/**@brief Timeout handler for the repeated timer
+/** 
+ * @brief Get all the readings from on-board sensors and package them into 
  */
-void main_timer_handler(void *p_context)
+static void packageStartupAdvertisement(void)
 {
+  static uint16_t vbat = 0;
+  vbat = getBattery();    // Get the voltage supplied to the chip.
+  encodeToRawFormat5OnStartup(data_buffer, vbat, BLE_TX_POWER); // All other fields will be zero.
+  NRF_LOG_INFO("Startup ad packaged\r\n");
+}
 
-#if SAADC_PIN30_ENABLED
+/** 
+ * @brief Get all the readings from on-board sensors and package them into 
+ */
+static void packageSensorDataIntoAdvertisement(void)
+{
+  int32_t raw_t = 0;
+  //uint32_t raw_p = 0; // removed to make space for event counter
+  uint32_t raw_h = 0;
+  lis2dh12_sensor_buffer_t buffer;
 
-  // get AIN6/P030 voltage and treat it as a pin4 event if the values are within ON range
-  uint16_t p30voltage = getP30Voltage();
-  if ((p30voltage > SAADC_PIN30_ON_MIN) && (p30voltage < SAADC_PIN30_ON_MAX))
-    ext_pin4_events++;
+  // Get raw environmental data.
+  bme280_read_measurements();
+  raw_t = bme280_get_temperature();
+  //raw_p = bme280_get_pressure();
+  raw_h = bme280_get_humidity();
 
-#endif
+  // Get accelerometer data.
+  lis2dh12_read_samples(&buffer, 1);
 
-#if NRF_LOG_LEVEL > 3
+  // Get battery voltage
+  static uint16_t vbat = 0;
+  vbat = getBattery();
 
+  // Prepare bytearray to broadcast.
+  bme280_data_t environmental;
+  environmental.temperature = raw_t;
+  environmental.humidity = raw_h;
+  environmental.pressure = ext_pin4_events; //raw_p; //This is a temp plug to pass it on. 5000 is bias that is taken out later.
+  encodeToRawFormat5(data_buffer, &environmental, &buffer.sensor, acceleration_events, vbat, BLE_TX_POWER);
+
+  NRF_LOG_INFO("Event ad packaged\r\n");
+}
+
+/**
+ * @brief Blink the LEDs in response to events
+ */
+static void blinkLEDsOnEvents(void)
+{
   // Turn green LED on from acceleration
   if (acceleration_events > 0)
   {
+    NRF_LOG_INFO("Accel #%d\r\n", acceleration_events);
     nrf_gpio_pin_clear(LED_GREEN);
   }
   else
@@ -127,71 +164,67 @@ void main_timer_handler(void *p_context)
   // Toggle red led for ext pin
   if (ext_pin4_events > 0)
   {
-    NRF_LOG_DEBUG("Pin4: %d\r\n", ext_pin4_events);
+    NRF_LOG_INFO("Pin4 #%d\r\n", ext_pin4_events);
     nrf_gpio_pin_clear(LED_RED);
   }
   else
   {
     nrf_gpio_pin_set(LED_RED);
   }
+}
 
+/**@brief Timeout handler for the repeated timer
+ */
+void main_timer_handler(void *p_context)
+{
+
+  // get AIN6/P030 voltage and treat it as a pin4 event if the values are within ON range
+  uint16_t p30voltage = getP30Voltage();
+  NRF_LOG_INFO("%dv  ", p30voltage);
+  /*
+  if ((p30voltage > SAADC_PIN30_ON_MIN) && (p30voltage < SAADC_PIN30_ON_MAX))
+    ext_pin4_events++;
+  */
+
+#if NRF_LOG_LEVEL > 2
+  blinkLEDsOnEvents(); // only needed for debugging
 #endif
 
   //are there new activations
   bool active = ((acceleration_events + ext_pin4_events) > 0);
 
-  //Read sensor data only if there was an acceleration event
-  if (active)
+  if (!initAdSent)
   {
-    int32_t raw_t = 0;
-    uint32_t raw_p = 0;
-    uint32_t raw_h = 0;
-    lis2dh12_sensor_buffer_t buffer;
-    int32_t acc[3] = {0};
-
-    // Get raw environmental data.
-    bme280_read_measurements();
-    raw_t = bme280_get_temperature();
-    raw_p = bme280_get_pressure();
-    raw_h = bme280_get_humidity();
-
-    // Get accelerometer data.
-    lis2dh12_read_samples(&buffer, 1);
-    acc[0] = buffer.sensor.x;
-    acc[1] = buffer.sensor.y;
-    acc[2] = buffer.sensor.z;
-
-    // Get battery voltage
-    static uint16_t vbat = 0;
-    vbat = getBattery();
-
-    // Embed data into structure for parsing.
-    parseSensorData(&data, raw_t, raw_p, raw_h, vbat, acc);
-
-    // Prepare bytearray to broadcast.
-    bme280_data_t environmental;
-    environmental.temperature = raw_t;
-    environmental.humidity = raw_h;
-    environmental.pressure = ext_pin4_events; //raw_p; //This is a temp plug to pass it on. 5000 is bias that is taken out later.
-    encodeToRawFormat5(data_buffer, &environmental, &buffer.sensor, acceleration_events, vbat, BLE_TX_POWER);
+    // send out a special ad indicating there was a boot event
+    initAdSent = true;                   // mark as sent
+    packageStartupAdvertisement();       // use a special ad to indicate a start event
+    ad_cycles = AD_MAIN_LOOP_CYCLES + 1; // roll for the default number of cycles, but it can be overtaken by events
+    bluetooth_advertising_start();
+  }
+  else if (active)
+  {
+    //Read sensor data only if there was an activation event
+    packageSensorDataIntoAdvertisement();
   }
 
-  //Advertise only if there was a new acceleration event
+  //Re-start advertising only if there was a new acceleration event
   if (acceleration_events > acceleration_events_b4 || ext_pin4_events > ext_pin4_events_b4)
   {
     //Advertise for N cycles from now
-    ad_cycles = AD_MAIN_LOOP_CYCLES;
+    ad_cycles = AD_MAIN_LOOP_CYCLES + 1; // has to be + 1 because it clips the last cycle
     bluetooth_advertising_start();
+    NRF_LOG_INFO("Ads started\r\n");
   }
-  else if (ad_cycles == 0 && active)
+  else if (ad_cycles == 1)
   {
     // Stop advertising
     bluetooth_advertising_stop();
     acceleration_events = 0; //Reset acceleration counter for the next cycle
     ext_pin4_events = 0;
+    NRF_LOG_INFO("Ads stopped\r\n");
   }
 
-  // Decrement ad counter
+  // Decrement ad counter all the way to zero
   if (ad_cycles > 0)
     ad_cycles--;
 
@@ -238,12 +271,14 @@ ret_code_t ext_int4_handler(const ruuvi_standard_message_t message)
 uint16_t getP30Voltage(void)
 {
   // Can SAADC be used?
-  if (nrf_drv_saadc_is_busy()) return 0;
+  if (nrf_drv_saadc_is_busy())
+    return 0;
 
   // Take a blocking sample
   nrf_saadc_value_t voltage_level;
   ret_code_t err_code = nrf_drv_saadc_sample_convert(SAADC_PIN30_CHANNEL, &voltage_level);
-  if (err_code != NRF_SUCCESS) return 0;
+  if (err_code != NRF_SUCCESS)
+    return 0;
 
   // see drivers/battery.c for explanation of the values
   uint16_t voltage = voltage_level * 3.515625 + REVERSE_PROT_VOLT_DROP_MILLIVOLTS;
@@ -282,7 +317,7 @@ int main(void)
   err_code |= init_leds();     // INIT leds first and turn RED on.
   nrf_gpio_pin_clear(LED_RED); // If INIT fails at later stage, RED will stay lit.
 
-  NRF_LOG_DEBUG("Inside main.\r\n");
+  NRF_LOG_INFO("Inside main.\r\n");
 
   //Init NFC ASAP in case we're waking from deep sleep via NFC (todo)
   //err_code |= init_nfc();
