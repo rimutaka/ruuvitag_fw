@@ -79,6 +79,7 @@ static uint16_t ad_cycles = 0;              // a counter for ad cycles
 static uint16_t acceleration_events_b4 = 0; // counter from the previous cycle
 static uint32_t ext_pin4_events_b4 = 0;     // counter from the previous cycle
 static bool initAdSent = false;             // set to true once on start after sending an empty ad
+static uint32_t main_loop_counter = 0;      // used to calculate heartbeat ad interval
 //static uint32_t counter_cycles_since_on = 60; // decremented for a soft start
 //static uint32_t counter_heartbeat_cycles = 0; // incremented with every main loop
 
@@ -107,7 +108,7 @@ static void updateAdvertisement(void)
 static void packageStartupAdvertisement(void)
 {
   static uint16_t vbat = 0;
-  vbat = getBattery();    // Get the voltage supplied to the chip.
+  vbat = getBattery();                                          // Get the voltage supplied to the chip.
   encodeToRawFormat5OnStartup(data_buffer, vbat, BLE_TX_POWER); // All other fields will be zero.
   NRF_LOG_INFO("Startup ad packaged\r\n");
 }
@@ -117,6 +118,8 @@ static void packageStartupAdvertisement(void)
  */
 static void packageSensorDataIntoAdvertisement(void)
 {
+  main_loop_counter = 0; // reset the heatbeat counter
+
   int32_t raw_t = 0;
   //uint32_t raw_p = 0; // removed to make space for event counter
   uint32_t raw_h = 0;
@@ -142,7 +145,7 @@ static void packageSensorDataIntoAdvertisement(void)
   environmental.pressure = ext_pin4_events; //raw_p; //This is a temp plug to pass it on. 5000 is bias that is taken out later.
   encodeToRawFormat5(data_buffer, &environmental, &buffer.sensor, acceleration_events, vbat, BLE_TX_POWER);
 
-  NRF_LOG_INFO("Event ad packaged\r\n");
+  NRF_LOG_INFO("Event ad p4:%d, v:%d, x-y-z: %d - %d - %d, t:%d \r\n", ext_pin4_events, vbat, buffer.sensor.x, buffer.sensor.y, buffer.sensor.z, raw_t);
 }
 
 /**
@@ -178,6 +181,8 @@ static void blinkLEDsOnEvents(void)
 void main_timer_handler(void *p_context)
 {
 
+  main_loop_counter++; // it is reset inside packageSensorDataIntoAdvertisement
+
   // get AIN6/P030 voltage and treat it as a pin4 event if the values are within ON range
   uint16_t p30voltage = getP30Voltage();
   NRF_LOG_INFO("%dv  ", p30voltage);
@@ -203,8 +208,16 @@ void main_timer_handler(void *p_context)
   }
   else if (active)
   {
-    //Read sensor data only if there was an activation event
-    packageSensorDataIntoAdvertisement();
+    // Normal event processing
+    packageSensorDataIntoAdvertisement(); // Read sensor data and package it into an ad format
+  }
+  else if (main_loop_counter == HEARTBEAT_LOOP_CYCLES)
+  {
+    // send out a heartbeat ad if no ads were sent out in a predefined period
+    NRF_LOG_INFO("Heartbeat\r\n");
+    packageSensorDataIntoAdvertisement(); // Read sensor data anyway
+    ad_cycles = AD_MAIN_LOOP_CYCLES + 1;
+    bluetooth_advertising_start();
   }
 
   //Re-start advertising only if there was a new acceleration event
