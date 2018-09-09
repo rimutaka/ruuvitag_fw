@@ -12,10 +12,12 @@
 
 // milliseconds until main loop timer function is called. Other timers can bring
 // application out of sleep at higher (or lower) interval.
-#define MAIN_LOOP_INTERVAL_RAW   1000u  //How often main_timer_handler routine fires 
-#define ADVERTISING_INTERVAL_RAW 200u   //How often BLE packets go out when advertising starts
-#define AD_MAIN_LOOP_CYCLES 2           //Number of main_timer_handler cycles to advertise after a single activation  
-#define HEARTBEAT_LOOP_CYCLES 3600u     // Number of main_timer_handler cycles between a single heartbeat ad  
+#define MAIN_LOOP_INTERVAL_RAW      1000u  //How often main_timer_handler routine fires 
+#define ADVERTISING_INTERVAL_RAW    200u   //How often BLE packets go out when advertising starts
+#define AD_MAIN_LOOP_CYCLES         5      //Number of main_timer_handler cycles to advertise after a single activation  
+#define HEARTBEAT_LOOP_CYCLES       3600u  // Number of main_timer_handler cycles between a single heartbeat ad
+#define PIN30_ACTIVATION_TIMEOUT    67u    // Number of cycles to wait after the pin goes high (LED is ON)
+#define PIN31_ACTIVATION_TIMEOUT    120u   // Number of cycles to wait after the pin goes high (PIR Vdd is ON)
 
 //Raw v2
 #define RAW_DATA_LENGTH 24

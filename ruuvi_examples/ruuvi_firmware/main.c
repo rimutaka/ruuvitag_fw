@@ -33,7 +33,7 @@
 
 //Logging
 #define NRF_LOG_MODULE_NAME "App"
-#define NRF_LOG_LEVEL 3 // Using INFO level for debugging. I couldn't get DEBUG level to work.
+#define NRF_LOG_LEVEL 0 // Using INFO level for debugging. I couldn't get DEBUG level to work.
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
 
@@ -68,11 +68,7 @@
 // ID for main loop timer.
 APP_TIMER_DEF(main_timer_id); // Creates timer id for our program.
 
-// Payload requires 9 characters
-//static char url_buffer[URL_BASE_LENGTH + URL_DATA_LENGTH] = URL_BASE;
 static uint8_t data_buffer[RAW_DATA_LENGTH] = {0};
-//static bool model_plus = false;     // Flag for sensors available
-//static bool highres = true;        // Flag for used mode
 static uint16_t acceleration_events = 0;    // Acceleration interrupts counter
 static uint32_t ext_pin4_events = 0;        // Pin 4 interrupts counter
 static uint16_t ad_cycles = 0;              // a counter for ad cycles
@@ -80,13 +76,14 @@ static uint16_t acceleration_events_b4 = 0; // counter from the previous cycle
 static uint32_t ext_pin4_events_b4 = 0;     // counter from the previous cycle
 static bool initAdSent = false;             // set to true once on start after sending an empty ad
 static uint32_t main_loop_counter = 0;      // used to calculate heartbeat ad interval
-//static uint32_t counter_cycles_since_on = 60; // decremented for a soft start
-//static uint32_t counter_heartbeat_cycles = 0; // incremented with every main loop
+static uint32_t ext_sensor_on_counter = 0;  // number of cycles the external sensor was on
+static uint32_t ext_vdd_on_counter = 0;     // number of cycles Vdd of the external sensor was on
 
-//static ruuvi_sensor_t data;
 
+// PROTOTYPES
 static void main_timer_handler(void *p_context);
-uint16_t getP30Voltage(void);
+void getP30Voltage(void);
+bool checkPirVddVoltage(void);
 
 /**@brief Function for doing power management.
  */
@@ -148,6 +145,7 @@ static void packageSensorDataIntoAdvertisement(void)
   NRF_LOG_INFO("Event ad p4:%d, v:%d, x-y-z: %d - %d - %d, t:%d \r\n", ext_pin4_events, vbat, buffer.sensor.x, buffer.sensor.y, buffer.sensor.z, raw_t);
 }
 
+#if NRF_LOG_LEVEL > 2
 /**
  * @brief Blink the LEDs in response to events
  */
@@ -175,6 +173,7 @@ static void blinkLEDsOnEvents(void)
     nrf_gpio_pin_set(LED_RED);
   }
 }
+#endif
 
 /**@brief Timeout handler for the repeated timer
  */
@@ -183,13 +182,10 @@ void main_timer_handler(void *p_context)
 
   main_loop_counter++; // it is reset inside packageSensorDataIntoAdvertisement
 
-  // get AIN6/P030 voltage and treat it as a pin4 event if the values are within ON range
-  uint16_t p30voltage = getP30Voltage();
-  NRF_LOG_INFO("%dv  ", p30voltage);
-  /*
-  if ((p30voltage > SAADC_PIN30_ON_MIN) && (p30voltage < SAADC_PIN30_ON_MAX))
-    ext_pin4_events++;
-  */
+// get AIN6/P030 voltage and treat it as a pin4 event if the values are within ON range
+#if SAADC_PIN30_ENABLED
+  getP30Voltage();
+#endif
 
 #if NRF_LOG_LEVEL > 2
   blinkLEDsOnEvents(); // only needed for debugging
@@ -280,35 +276,123 @@ ret_code_t ext_int4_handler(const ruuvi_standard_message_t message)
 
 #if SAADC_PIN30_ENABLED
 
-// Try to get sensor voltage in a safe manner
-uint16_t getP30Voltage(void)
+/** 
+ * @brief Returns TRUE if the PIR had Vdd on for longer than a min configurable period (P31).
+ * It is necessary because the LED turns on first time the PIR Vdd goes high, which is when the solar
+ * panel stops supplying voltage. This normally not an issue, but it generates at least one activation
+ * event per day. Someone shining a stong light into the solar panel may turn the light on.
+ */
+bool checkPirVddVoltage(void)
 {
+  //NRF_LOG_INFO("checkPirVddVoltage\r\n");
   // Can SAADC be used?
   if (nrf_drv_saadc_is_busy())
-    return 0;
+  {
+    NRF_LOG_INFO("P31 nrf_drv_saadc_is _BUSY!\r\n");
+    return false;
+  }
+
+  // Take a blocking sample
+  nrf_saadc_value_t voltage_level;
+  ret_code_t err_code = nrf_drv_saadc_sample_convert(SAADC_PIN31_CHANNEL, &voltage_level);
+  if (err_code != NRF_SUCCESS)
+  {
+    NRF_LOG_INFO("P31 nrf_drv_saadc_sample_convert FAILED!\r\n");
+    return false;
+  }
+
+  // see drivers/battery.c for explanation of the values
+  uint16_t voltage = voltage_level * 3.515625 + REVERSE_PROT_VOLT_DROP_MILLIVOLTS;
+  NRF_LOG_INFO("P31: %dmV\r\n", voltage);
+
+  //Is Vdd high enough?
+  if (voltage < SAADC_PIN31_HIGH)
+  {
+    // Vdd is not high enough - the PIR is disabled
+    ext_vdd_on_counter = 0; // start the timout cycle
+    NRF_LOG_INFO("P31 power OFF.\r\n");
+    return false;
+  }
+  else if (ext_vdd_on_counter < PIN31_ACTIVATION_TIMEOUT)
+  {
+    // the power is on, but it's still a timeout
+    ext_vdd_on_counter++;
+    NRF_LOG_INFO("Power on timeout: %d\r\n", PIN31_ACTIVATION_TIMEOUT - ext_vdd_on_counter);
+    return false;
+  }
+  else
+  {
+    return true; // Vdd has been on for long enough
+  }
+}
+
+// Try to get sensor voltage in a safe manner
+void getP30Voltage(void)
+{
+
+  if (!checkPirVddVoltage()) {
+    // PIR is disabled - nothing to do
+    ext_sensor_on_counter = 0;
+    return; 
+  }
+
+  // check if the activation counter needs to be reset
+  if (ext_sensor_on_counter == PIN30_ACTIVATION_TIMEOUT) ext_sensor_on_counter = 0;
+  if (ext_sensor_on_counter > 0)
+  {
+    NRF_LOG_INFO("P30 timeout: %d\r\n", PIN30_ACTIVATION_TIMEOUT - ext_sensor_on_counter);
+    ext_sensor_on_counter++; // keep incrementing until the limit is reached
+    return;                  // there is no point measureing anything until the timeout is over
+  }
+
+  // check if the sensor Vdd was on for long enough
+
+
+  // Can SAADC be used?
+  if (nrf_drv_saadc_is_busy())
+  {
+    NRF_LOG_INFO("nrf_drv_saadc_is _BUSY!\r\n");
+    return;
+  }
 
   // Take a blocking sample
   nrf_saadc_value_t voltage_level;
   ret_code_t err_code = nrf_drv_saadc_sample_convert(SAADC_PIN30_CHANNEL, &voltage_level);
   if (err_code != NRF_SUCCESS)
-    return 0;
+  {
+    NRF_LOG_INFO("nrf_drv_saadc_sample_convert FAILED!\r\n");
+    return;
+  }
 
   // see drivers/battery.c for explanation of the values
   uint16_t voltage = voltage_level * 3.515625 + REVERSE_PROT_VOLT_DROP_MILLIVOLTS;
+  NRF_LOG_INFO("P30: %dmV\r\n", voltage);
 
-  //Return as voltage
-  return voltage;
+  //Emulate an event if the voltage is low
+  if (voltage > SAADC_PIN30_HIGH)
+  {
+    ext_sensor_on_counter = 1; // start the timout cycle
+    ext_pin4_events++;
+  }
+  else
+  {
+    // the sensor turned off - reset event counter
+    ext_pin4_events = 0;
+  }
+
 }
 
 ret_code_t saadc_init(void)
 {
-  // enable it on pin 30
-  nrf_saadc_channel_config_t channel_config = NRF_DRV_SAADC_DEFAULT_CHANNEL_CONFIG_SE(NRF_SAADC_INPUT_AIN6);
+  // enable it on pin 30 (mosfet that drives the LED) and pin31 (PIR Vdd)
+  nrf_saadc_channel_config_t channel_config_mosfet = NRF_DRV_SAADC_DEFAULT_CHANNEL_CONFIG_SE(NRF_SAADC_INPUT_AIN6);
+  nrf_saadc_channel_config_t channel_config_pir = NRF_DRV_SAADC_DEFAULT_CHANNEL_CONFIG_SE(NRF_SAADC_INPUT_AIN7);
 
   // Call that init routine to avoid clashing with their initialisation
   battery_voltage_init();
 
-  ret_code_t err_code = nrf_drv_saadc_channel_init(SAADC_PIN30_CHANNEL, &channel_config);
+  ret_code_t err_code = nrf_drv_saadc_channel_init(SAADC_PIN30_CHANNEL, &channel_config_mosfet);
+  err_code |= nrf_drv_saadc_channel_init(SAADC_PIN31_CHANNEL, &channel_config_pir);
 
   return err_code;
 }

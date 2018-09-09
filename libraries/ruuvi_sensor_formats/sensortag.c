@@ -75,7 +75,6 @@ void encodeToRawFormat5(uint8_t* data_buffer, bme280_data_t* environmental, acce
     humidity /= 1024;
     data_buffer[3] = humidity>>8;
     data_buffer[4] = humidity&0xFF;
-    NRF_LOG_DEBUG("Humidity is %d\r\n", humidity/400);
     //environmental->pressure = (uint16_t)((environmental->pressure >> 8) - 50000); //Scale into pa, Shift by -50000 pa as per Ruu.vi interface.
     data_buffer[5] = (environmental->pressure)>>8;
     data_buffer[6] = (environmental->pressure)&0xFF;
