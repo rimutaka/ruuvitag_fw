@@ -33,7 +33,7 @@
 
 //Logging
 #define NRF_LOG_MODULE_NAME "App"
-#define NRF_LOG_LEVEL 0 // Using INFO level for debugging. I couldn't get DEBUG level to work.
+#define NRF_LOG_LEVEL 3 // Using INFO level (3) for debugging. I couldn't get DEBUG level to work.
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
 
@@ -76,9 +76,12 @@ static uint16_t acceleration_events_b4 = 0; // counter from the previous cycle
 static uint32_t ext_pin4_events_b4 = 0;     // counter from the previous cycle
 static bool initAdSent = false;             // set to true once on start after sending an empty ad
 static uint32_t main_loop_counter = 0;      // used to calculate heartbeat ad interval
+static uint32_t ad_counter = 0;             // the sequntial number of the ad from the app start
+
+#if SAADC_PIN30_ENABLED
 static uint32_t ext_sensor_on_counter = 0;  // number of cycles the external sensor was on
 static uint32_t ext_vdd_on_counter = 0;     // number of cycles Vdd of the external sensor was on
-
+#endif
 
 // PROTOTYPES
 static void main_timer_handler(void *p_context);
@@ -116,6 +119,8 @@ static void packageStartupAdvertisement(void)
 static void packageSensorDataIntoAdvertisement(void)
 {
   main_loop_counter = 0; // reset the heatbeat counter
+  ad_counter ++;         // only use for logging, but it would make sense to include it into the BLE data
+
 
   int32_t raw_t = 0;
   //uint32_t raw_p = 0; // removed to make space for event counter
@@ -142,7 +147,8 @@ static void packageSensorDataIntoAdvertisement(void)
   environmental.pressure = ext_pin4_events; //raw_p; //This is a temp plug to pass it on. 5000 is bias that is taken out later.
   encodeToRawFormat5(data_buffer, &environmental, &buffer.sensor, acceleration_events, vbat, BLE_TX_POWER);
 
-  NRF_LOG_INFO("Event ad p4:%d, v:%d, x-y-z: %d - %d - %d, t:%d \r\n", ext_pin4_events, vbat, buffer.sensor.x, buffer.sensor.y, buffer.sensor.z, raw_t);
+  NRF_LOG_INFO("Ad #%d ", ad_counter);
+  NRF_LOG_INFO("p4:%d, v:%d, x-y-z: %d - %d - %d, t:%d \r\n", ext_pin4_events, vbat, buffer.sensor.x, buffer.sensor.y, buffer.sensor.z, raw_t);
 }
 
 #if NRF_LOG_LEVEL > 2
@@ -207,10 +213,10 @@ void main_timer_handler(void *p_context)
     // Normal event processing
     packageSensorDataIntoAdvertisement(); // Read sensor data and package it into an ad format
   }
-  else if (main_loop_counter == HEARTBEAT_LOOP_CYCLES)
+  else if (main_loop_counter >= HEARTBEAT_LOOP_CYCLES)
   {
     // send out a heartbeat ad if no ads were sent out in a predefined period
-    NRF_LOG_INFO("Heartbeat\r\n");
+    NRF_LOG_INFO("Heartbeat at %d.\r\n", main_loop_counter);
     packageSensorDataIntoAdvertisement(); // Read sensor data anyway
     ad_cycles = AD_MAIN_LOOP_CYCLES + 1;
     bluetooth_advertising_start();
@@ -303,14 +309,14 @@ bool checkPirVddVoltage(void)
 
   // see drivers/battery.c for explanation of the values
   uint16_t voltage = voltage_level * 3.515625 + REVERSE_PROT_VOLT_DROP_MILLIVOLTS;
-  NRF_LOG_INFO("P31: %dmV\r\n", voltage);
+  //NRF_LOG_INFO("P31: %dmV\r\n", voltage);
 
   //Is Vdd high enough?
   if (voltage < SAADC_PIN31_HIGH)
   {
     // Vdd is not high enough - the PIR is disabled
     ext_vdd_on_counter = 0; // start the timout cycle
-    NRF_LOG_INFO("P31 power OFF.\r\n");
+    //NRF_LOG_INFO("P31 power OFF.\r\n");
     return false;
   }
   else if (ext_vdd_on_counter < PIN31_ACTIVATION_TIMEOUT)
@@ -366,7 +372,7 @@ void getP30Voltage(void)
 
   // see drivers/battery.c for explanation of the values
   uint16_t voltage = voltage_level * 3.515625 + REVERSE_PROT_VOLT_DROP_MILLIVOLTS;
-  NRF_LOG_INFO("P30: %dmV\r\n", voltage);
+  //NRF_LOG_INFO("P30: %dmV\r\n", voltage);
 
   //Emulate an event if the voltage is low
   if (voltage > SAADC_PIN30_HIGH)
@@ -490,7 +496,7 @@ int main(void)
   bme280_set_iir(BME280_IIR);
   bme280_set_interval(BME280_DELAY);
   bme280_set_mode(BME280_MODE_NORMAL);
-  NRF_LOG_DEBUG("BME280 configuration done\r\n");
+  NRF_LOG_INFO("BME280 configuration done\r\n");
 
   // Visually display init status. Hangs if there was an error, waits 3 seconds on success.
   init_blink_status(err_code);
