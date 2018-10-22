@@ -372,8 +372,8 @@ void getP30Voltage(void)
   NRF_LOG_INFO("P30: %d or %dmV\r\n", voltage_level, voltage);
   NRF_LOG_INFO("P30/P31: %d%%\r\n", voltage_level / (float)ext_vdd_ref_units * 100);
 
-  //Emulate an event if the pin voltage is lower than the reference
-  if ((voltage_level / (float)ext_vdd_ref_units) <= SAADC_PIN30_TO_31)
+  //Emulate an event if the pin voltage is close to the reference
+  if ((voltage_level / (float)ext_vdd_ref_units) >= SAADC_PIN30_TO_31)
   {
     ext_sensor_on_counter = 1; // start the timout cycle
     ext_pin4_events++;

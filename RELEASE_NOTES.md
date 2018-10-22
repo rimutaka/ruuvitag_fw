@@ -3,7 +3,7 @@
 This build is for a garden light / PIR combo.
 PIR IC has a short between p3/p4 and 47kOhm between p5/p6 to reduce the activation time and the interval between activations.
 
-Ruuvi P30 -> PIR IC p3/p4 (GRN)
+Ruuvi P30 -> PIR IC p2 (GRN)
 Ruuvi P31 -> PIR IC p8 (WHT)
 
 
@@ -14,7 +14,7 @@ Ruuvi P31 -> PIR IC p8 (WHT)
 
 ## External pins
 
-* Pin 30 - PIR controller IC to LED mosfet output, active LOW, must be 70% or less of Pin 31 voltage
+* Pin 30 - PIR controller IC to LED mosfet output, active HIGH, must be 70% or more of Pin 31 voltage
 * Pin 31 - Vdd of the PIR controller IC, which is on if there is no light hitting the solar panel.
 
 ## Operation

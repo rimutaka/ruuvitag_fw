@@ -29,6 +29,6 @@
 #define SAADC_PIN30_CHANNEL 1   // Set the channel here to avoid conflicts with other parts of the code, e.g. battery
 #define SAADC_PIN31_CHANNEL 2   // Set the channel here to avoid conflicts with other parts of the code, e.g. battery
 #define SAADC_PIN31_HIGH 2000   // A min expected PIR Vdd value for the PIR to work
-#define SAADC_PIN30_TO_31 0.7   // A ratio of the PIR activation voltage (active=low) to the reference Vdd
+#define SAADC_PIN30_TO_31 0.7   // A ratio of the PIR activation voltage (active=high) to the reference Vdd
 
 #endif
