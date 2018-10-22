@@ -16,7 +16,7 @@
 #define ADVERTISING_INTERVAL_RAW    200u   //How often BLE packets go out when advertising starts
 #define AD_MAIN_LOOP_CYCLES         5      //Number of main_timer_handler cycles to advertise after a single activation  
 #define HEARTBEAT_LOOP_CYCLES       3600u  // Number of main_timer_handler cycles between a single heartbeat ad
-#define PIN30_ACTIVATION_TIMEOUT    67u    // Number of cycles to wait after the pin goes high (LED is ON)
+#define PIN30_ACTIVATION_TIMEOUT    0    // Number of cycles to wait after the pin goes high (LED is ON)
 #define PIN31_ACTIVATION_TIMEOUT    120u   // Number of cycles to wait after the pin goes high (PIR Vdd is ON)
 
 //Raw v2

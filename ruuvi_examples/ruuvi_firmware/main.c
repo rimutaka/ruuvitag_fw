@@ -33,7 +33,7 @@
 
 //Logging
 #define NRF_LOG_MODULE_NAME "App"
-#define NRF_LOG_LEVEL 3 // Using INFO level (3) for debugging. I couldn't get DEBUG level to work.
+#define NRF_LOG_LEVEL 2 // Use INFO level 3 for debugging, 2 to disable. I couldn't get DEBUG level 4 to work.
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
 
@@ -81,6 +81,7 @@ static uint32_t ad_counter = 0;             // the sequntial number of the ad fr
 #if SAADC_PIN30_ENABLED
 static uint32_t ext_sensor_on_counter = 0;  // number of cycles the external sensor was on
 static uint32_t ext_vdd_on_counter = 0;     // number of cycles Vdd of the external sensor was on
+static nrf_saadc_value_t ext_vdd_ref_units = 0; // voltage on pin 31 in internal units as a reference
 #endif
 
 // PROTOTYPES
@@ -148,7 +149,7 @@ static void packageSensorDataIntoAdvertisement(void)
   encodeToRawFormat5(data_buffer, &environmental, &buffer.sensor, acceleration_events, vbat, BLE_TX_POWER);
 
   NRF_LOG_INFO("Ad #%d ", ad_counter);
-  NRF_LOG_INFO("p4:%d, v:%d, x-y-z: %d - %d - %d, t:%d \r\n", ext_pin4_events, vbat, buffer.sensor.x, buffer.sensor.y, buffer.sensor.z, raw_t);
+  NRF_LOG_INFO("p4:%d, v:%d, x|y|z: %d|%d|%d, t:%d \r\n", ext_pin4_events, vbat, buffer.sensor.x, buffer.sensor.y, buffer.sensor.z, raw_t);
 }
 
 #if NRF_LOG_LEVEL > 2
@@ -290,7 +291,7 @@ ret_code_t ext_int4_handler(const ruuvi_standard_message_t message)
  */
 bool checkPirVddVoltage(void)
 {
-  //NRF_LOG_INFO("checkPirVddVoltage\r\n");
+  NRF_LOG_INFO("checkPirVddVoltage\r\n");
   // Can SAADC be used?
   if (nrf_drv_saadc_is_busy())
   {
@@ -299,8 +300,7 @@ bool checkPirVddVoltage(void)
   }
 
   // Take a blocking sample
-  nrf_saadc_value_t voltage_level;
-  ret_code_t err_code = nrf_drv_saadc_sample_convert(SAADC_PIN31_CHANNEL, &voltage_level);
+  ret_code_t err_code = nrf_drv_saadc_sample_convert(SAADC_PIN31_CHANNEL, &ext_vdd_ref_units);
   if (err_code != NRF_SUCCESS)
   {
     NRF_LOG_INFO("P31 nrf_drv_saadc_sample_convert FAILED!\r\n");
@@ -308,15 +308,15 @@ bool checkPirVddVoltage(void)
   }
 
   // see drivers/battery.c for explanation of the values
-  uint16_t voltage = voltage_level * 3.515625 + REVERSE_PROT_VOLT_DROP_MILLIVOLTS;
-  //NRF_LOG_INFO("P31: %dmV\r\n", voltage);
+  uint16_t voltage = ext_vdd_ref_units * 3.515625 + REVERSE_PROT_VOLT_DROP_MILLIVOLTS;
+  NRF_LOG_INFO("P31: %d or %dmV\r\n", ext_vdd_ref_units, voltage);
 
   //Is Vdd high enough?
   if (voltage < SAADC_PIN31_HIGH)
   {
     // Vdd is not high enough - the PIR is disabled
     ext_vdd_on_counter = 0; // start the timout cycle
-    //NRF_LOG_INFO("P31 power OFF.\r\n");
+    NRF_LOG_INFO("P31 power OFF.\r\n");
     return false;
   }
   else if (ext_vdd_on_counter < PIN31_ACTIVATION_TIMEOUT)
@@ -343,7 +343,7 @@ void getP30Voltage(void)
   }
 
   // check if the activation counter needs to be reset
-  if (ext_sensor_on_counter == PIN30_ACTIVATION_TIMEOUT) ext_sensor_on_counter = 0;
+  if (ext_sensor_on_counter >= PIN30_ACTIVATION_TIMEOUT) ext_sensor_on_counter = 0;
   if (ext_sensor_on_counter > 0)
   {
     NRF_LOG_INFO("P30 timeout: %d\r\n", PIN30_ACTIVATION_TIMEOUT - ext_sensor_on_counter);
@@ -351,10 +351,7 @@ void getP30Voltage(void)
     return;                  // there is no point measureing anything until the timeout is over
   }
 
-  // check if the sensor Vdd was on for long enough
-
-
-  // Can SAADC be used?
+    // Can SAADC be used?
   if (nrf_drv_saadc_is_busy())
   {
     NRF_LOG_INFO("nrf_drv_saadc_is _BUSY!\r\n");
@@ -372,10 +369,11 @@ void getP30Voltage(void)
 
   // see drivers/battery.c for explanation of the values
   uint16_t voltage = voltage_level * 3.515625 + REVERSE_PROT_VOLT_DROP_MILLIVOLTS;
-  //NRF_LOG_INFO("P30: %dmV\r\n", voltage);
+  NRF_LOG_INFO("P30: %d or %dmV\r\n", voltage_level, voltage);
+  NRF_LOG_INFO("P30/P31: %d%%\r\n", voltage_level / (float)ext_vdd_ref_units * 100);
 
-  //Emulate an event if the voltage is low
-  if (voltage > SAADC_PIN30_HIGH)
+  //Emulate an event if the pin voltage is lower than the reference
+  if ((voltage_level / (float)ext_vdd_ref_units) <= SAADC_PIN30_TO_31)
   {
     ext_sensor_on_counter = 1; // start the timout cycle
     ext_pin4_events++;

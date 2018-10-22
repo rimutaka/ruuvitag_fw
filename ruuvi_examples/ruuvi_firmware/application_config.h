@@ -25,10 +25,10 @@
 #define LIS2DH12_ACTIVITY_THRESHOLD 0x04
 
 // SAADC can be used to sample the state of some other sensor
-#define SAADC_PIN30_ENABLED 0   // Compile voltage checks on pin 30 during every interval
+#define SAADC_PIN30_ENABLED 1   // Compile voltage checks on pin 30 during every interval
 #define SAADC_PIN30_CHANNEL 1   // Set the channel here to avoid conflicts with other parts of the code, e.g. battery
 #define SAADC_PIN31_CHANNEL 2   // Set the channel here to avoid conflicts with other parts of the code, e.g. battery
-#define SAADC_PIN30_HIGH 1200   // A min expected Vg of LED mosfet for ON state 
-#define SAADC_PIN31_HIGH 1500   // A min expected PIR Vdd value for the PIR to work
+#define SAADC_PIN31_HIGH 2000   // A min expected PIR Vdd value for the PIR to work
+#define SAADC_PIN30_TO_31 0.7   // A ratio of the PIR activation voltage (active=low) to the reference Vdd
 
 #endif
